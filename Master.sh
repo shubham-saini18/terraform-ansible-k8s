@@ -3,7 +3,7 @@ set -e
 
 echo "-------------Set Hostname------------"
 sudo hostnamectl set-hostname $1
-bash
+
 sudo apt-get update
 
 
