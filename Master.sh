@@ -78,7 +78,8 @@ sudo apt-mark hold kubelet kubeadm kubectl
 sudo apt-get install -y jq
 
 local_ip="$(ip --json addr show eth0 | jq -r '.[0].addr_info[] | select(.family == "inet") | .local')"
-cat > /etc/default/kubelet << EOF
+sudo mkdir -p /etc/default  # This creates the directory if it doesn't exist
+sudo tee /etc/default/kubelet << EOF
 KUBELET_EXTRA_ARGS=--node-ip=$local_ip
 EOF
 
