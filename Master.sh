@@ -2,7 +2,7 @@
 set -e
 
 echo "-------------Set Hostname------------"
-hostnamectl set-hostname $1
+sudo hostnamectl set-hostname $1
 
 
 echo "-------------Disabling swap-------------"
