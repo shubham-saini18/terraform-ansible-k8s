@@ -1,105 +1,119 @@
 #!/bin/bash
-set -e
+#
+# Common setup for all servers (Control Plane and Nodes)
 
-echo "-------------Set Hostname------------"
-sudo hostnamectl set-hostname $1
+set -euxo pipefail
 
-sudo apt-get update
+# Kuernetes Variable Declaration
 
+KUBERNETES_VERSION="1.29.0-1.1"
 
-echo "-------------Disabling swap-------------"
-swapoff -a
-sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
+# disable swap
+sudo swapoff -a
 
-
-echo "-------------Installing Containerd-------------"
-wget https://github.com/containerd/containerd/releases/download/v1.7.4/containerd-1.7.4-linux-amd64.tar.gz
-tar Cxzvf /usr/local containerd-1.7.4-linux-amd64.tar.gz
-wget https://raw.githubusercontent.com/containerd/containerd/main/containerd.service
-mkdir -p /usr/local/lib/systemd/system
-mv containerd.service /usr/local/lib/systemd/system/containerd.service
-systemctl daemon-reload
-systemctl enable --now containerd
+# keeps the swaf off during reboot
+(crontab -l 2>/dev/null; echo "@reboot /sbin/swapoff -a") | crontab - || true
+sudo apt-get update -y
 
 
-echo "-------------Installing Runc-------------"
-wget https://github.com/opencontainers/runc/releases/download/v1.1.9/runc.amd64
-install -m 755 runc.amd64 /usr/local/sbin/runc
+# Install CRI-O Runtime
 
+OS="xUbuntu_22.04"
 
-echo "-------------Installing CNI-------------"
-wget https://github.com/containernetworking/plugins/releases/download/v1.2.0/cni-plugins-linux-amd64-v1.2.0.tgz
-mkdir -p /opt/cni/bin
-tar Cxzvf /opt/cni/bin cni-plugins-linux-amd64-v1.2.0.tgz
+VERSION="1.28"
 
-
-echo "-------------Installing CRICTL-------------"
-VERSION="v1.28.0" # check latest version in /releases page
-wget https://github.com/kubernetes-sigs/cri-tools/releases/download/$VERSION/crictl-$VERSION-linux-amd64.tar.gz
-tar zxvf crictl-$VERSION-linux-amd64.tar.gz -C /usr/local/bin
-rm -f crictl-$VERSION-linux-amd64.tar.gz
-
-cat <<EOF | sudo tee /etc/crictl.yaml
-runtime-endpoint: unix:///run/containerd/containerd.sock
-image-endpoint: unix:///run/containerd/containerd.sock
-timeout: 2
-debug: false
-pull-image-on-create: false
-EOF
-
-
-echo "-------------Setting IPTables-------------"
+# Create the .conf file to load the modules at bootup
 cat <<EOF | sudo tee /etc/modules-load.d/k8s.conf
 overlay
 br_netfilter
-
-
 EOF
-modprobe overlay
-modprobe br_netfilter
+
+sudo modprobe overlay
+sudo modprobe br_netfilter
+
+# sysctl params required by setup, params persist across reboots
 cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
-net.bridge.bridge-nf-call-iptables = 1
+net.bridge.bridge-nf-call-iptables  = 1
 net.bridge.bridge-nf-call-ip6tables = 1
-net.ipv4.ip_forward = 1
+net.ipv4.ip_forward                 = 1
 EOF
 
-sysctl --system
-sysctl net.bridge.bridge-nf-call-iptables net.bridge.bridge-nf-call-ip6tables net.ipv4.ip_forward
-modprobe br_netfilter
-sysctl -p /etc/sysctl.conf
+# Apply sysctl params without reboot
+sudo sysctl --system
 
-echo "-------------Installing Kubectl, Kubelet and Kubeadm-------------"
-apt-get update && sudo apt-get install -y apt-transport-https curl
-curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
-
-
-cat <<EOF | sudo tee /etc/apt/sources.list.d/kubernetes.list
-deb https://apt.kubernetes.io/ kubernetes-xenial main
+cat <<EOF | sudo tee /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list
+deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/$OS/ /
 EOF
-echo "-------------Successfully Installed Kubectl, Kubelet and Kubeadm-------------"
-apt update -y
-apt install -y kubelet kubeadm kubectl
-apt-mark hold kubelet kubeadm kubectl
+cat <<EOF | sudo tee /etc/apt/sources.list.d/devel:kubic:libcontainers:stable:cri-o:$VERSION.list
+deb http://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable:/cri-o:/$VERSION/$OS/ /
+EOF
 
-echo "-------------Printing Kubeadm version-------------"
-kubeadm version
+curl -L https://download.opensuse.org/repositories/devel:kubic:libcontainers:stable:cri-o:$VERSION/$OS/Release.key | sudo apt-key --keyring /etc/apt/trusted.gpg.d/libcontainers.gpg add -
+curl -L https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/$OS/Release.key | sudo apt-key --keyring /etc/apt/trusted.gpg.d/libcontainers.gpg add -
 
-echo "-------------Pulling Kueadm Images -------------"
-kubeadm config images pull
+sudo apt-get update
+sudo apt-get install cri-o cri-o-runc -y
 
-echo "-------------Running kubeadm init-------------"
-kubeadm init
+sudo systemctl daemon-reload
+sudo systemctl enable crio --now
 
-echo "-------------Copying Kubeconfig-------------"
-mkdir -p /root/.kube
-cp -iv /etc/kubernetes/admin.conf /root/.kube/config
-sudo chown $(id -u):$(id -g) /root/.kube/config
+echo "CRI runtime installed susccessfully"
 
-echo "-------------Exporting Kubeconfig-------------"
-export KUBECONFIG=/etc/kubernetes/admin.conf
+# Install kubelet, kubectl and Kubeadm
 
-echo "-------------Deploying Weavenet Pod Networking-------------"
-kubectl apply -f https://github.com/weaveworks/weave/releases/download/v2.8.1/weave-daemonset-k8s.yaml
+sudo apt-get update -y
+sudo apt-get install -y apt-transport-https ca-certificates curl gpg
 
-echo "-------------Creating file with join command-------------"
-echo `kubeadm token create --print-join-command` > ./join-command.sh
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-1-28-apt-keyring.gpg
+echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-1-28-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes-1.28.list
+
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-1-29-apt-keyring.gpg
+echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-1-29-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes-1.29.list
+
+sudo apt-get update -y
+sudo apt-get install -y kubelet="$KUBERNETES_VERSION" kubectl="$KUBERNETES_VERSION" kubeadm="$KUBERNETES_VERSION"
+sudo apt-get update -y
+sudo apt-mark hold kubelet kubeadm kubectl
+
+sudo apt-get install -y jq
+
+local_ip="$(ip --json addr show eth0 | jq -r '.[0].addr_info[] | select(.family == "inet") | .local')"
+cat > /etc/default/kubelet << EOF
+KUBELET_EXTRA_ARGS=--node-ip=$local_ip
+EOF
+
+
+PUBLIC_IP_ACCESS="true"
+NODENAME=$(hostname -s)
+POD_CIDR="192.168.0.0/16"
+
+# Pull required images
+
+sudo kubeadm config images pull
+
+# Initialize kubeadm based on PUBLIC_IP_ACCESS
+
+if [[ "$PUBLIC_IP_ACCESS" == "false" ]]; then
+    
+    MASTER_PRIVATE_IP=$(ip addr show eth0 | awk '/inet / {print $2}' | cut -d/ -f1)
+    sudo kubeadm init --apiserver-advertise-address="$MASTER_PRIVATE_IP" --apiserver-cert-extra-sans="$MASTER_PRIVATE_IP" --pod-network-cidr="$POD_CIDR" --node-name "$NODENAME" --ignore-preflight-errors Swap
+
+elif [[ "$PUBLIC_IP_ACCESS" == "true" ]]; then
+
+    MASTER_PUBLIC_IP=$(curl ifconfig.me && echo "")
+    sudo kubeadm init --control-plane-endpoint="$MASTER_PUBLIC_IP" --apiserver-cert-extra-sans="$MASTER_PUBLIC_IP" --pod-network-cidr="$POD_CIDR" --node-name "$NODENAME" --ignore-preflight-errors Swap
+
+else
+    echo "Error: MASTER_PUBLIC_IP has an invalid value: $PUBLIC_IP_ACCESS"
+    exit 1
+fi
+
+# Configure kubeconfig
+
+mkdir -p "$HOME"/.kube
+sudo cp -i /etc/kubernetes/admin.conf "$HOME"/.kube/config
+sudo chown "$(id -u)":"$(id -g)" "$HOME"/.kube/config
+
+# Install Claico Network Plugin Network 
+
+kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
