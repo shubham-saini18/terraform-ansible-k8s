@@ -15,8 +15,8 @@ resource "aws_instance" "k8s_master" {
     host        = self.public_ip
   }
   provisioner "file" {
-    source      = "./master.sh"
-    destination = "/home/ubuntu/master.sh"
+    source      = "./Master.sh"
+    destination = "/home/ubuntu/Master.sh"
   }
   provisioner "remote-exec" {
     inline = [
@@ -47,8 +47,8 @@ resource "aws_instance" "k8s_worker" {
     host        = self.public_ip
   }
   provisioner "file" {
-    source      = "./worker.sh"
-    destination = "/home/ubuntu/worker.sh"
+    source      = "./Worker.sh"
+    destination = "/home/ubuntu/Worker.sh"
   }
   provisioner "file" {
     source      = "./join-command.sh"
