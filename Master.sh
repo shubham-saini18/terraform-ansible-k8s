@@ -58,6 +58,7 @@ install_runc() {
 install_cni() {
     info "Installing CNI plugins"
     local cni_version="v1.2.0"
+    mkdir -p /opt/cni/bin || error_exit "Failed to create directory /opt/cni/bin"
     wget -qO- "https://github.com/containernetworking/plugins/releases/download/$cni_version/cni-plugins-linux-amd64-$cni_version.tgz" | tar -C /opt/cni/bin -xzvf - || error_exit "Failed to download and extract CNI plugins"
 }
 
@@ -98,7 +99,7 @@ EOF
     sysctl --system || error_exit "Failed to apply kernel parameters"
 }
 
-# Install Kubernetes components
+# Install kubectl, kubelet and kubeadm
 install_kubernetes() {
     info "Installing Kubernetes components"
     curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add - || error_exit "Failed to add Kubernetes repository key"
@@ -108,26 +109,10 @@ install_kubernetes() {
     apt-mark hold kubelet kubeadm kubectl || error_exit "Failed to hold Kubernetes packages"
 }
 
-# Initialize Kubernetes cluster
-initialize_kubernetes() {
-    info "Initializing Kubernetes cluster"
-    kubeadm init || error_exit "Failed to initialize Kubernetes cluster"
-    mkdir -p "$HOME/.kube" || error_exit "Failed to create .kube directory"
-    cp -i /etc/kubernetes/admin.conf "$HOME/.kube/config" || error_exit "Failed to copy Kubernetes config"
-    chown "$(id -u):$(id -g)" "$HOME/.kube/config" || error_exit "Failed to change ownership of Kubernetes config"
-    export KUBECONFIG=/etc/kubernetes/admin.conf || error_exit "Failed to export KUBECONFIG"
-}
-
-# Deploy Weave Net CNI
-deploy_weave_net() {
-    info "Deploying Weave Net CNI"
-    kubectl apply -f "https://cloud.weave.works/k8s/net?k8s-version=$(kubectl version | base64 | tr -d '\n')" || error_exit "Failed to deploy Weave Net CNI"
-}
-
-# Generate join command
-generate_join_command() {
-    info "Generating join command"
-    kubeadm token create --print-join-command > /join-command.sh || error_exit "Failed to generate join command"
+# Print Kubeadm version
+print_kubeadm_version() {
+    info "Printing Kubeadm version"
+    kubeadm version
 }
 
 # Main function
@@ -142,10 +127,7 @@ main() {
     configure_crictrl
     configure_kernel
     install_kubernetes
-    initialize_kubernetes
-    deploy_weave_net
-    generate_join_command
-    info "Setup completed successfully"
+    print_kubeadm_version
 }
 
 # Call main function with hostname argument
