@@ -1,12 +1,6 @@
 #!/bin/bash
 set -euo pipefail
 
-# Check if running as root
-if [[ $EUID -ne 0 ]]; then
-    echo "This script must be run as root"
-    exit 1
-fi
-
 # Function to display informational messages
 info() {
     echo "$(date +'%Y-%m-%d %H:%M:%S') [INFO] $@"
