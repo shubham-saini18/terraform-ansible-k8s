@@ -82,7 +82,7 @@ KUBELET_EXTRA_ARGS=--node-ip=$local_ip
 EOF
 
 echo "-------------Pulling Kubeadm Images -------------"
-kubeadm config images pull
+sudo kubeadm config images pull
 
 echo "-------------Running kubeadm init-------------"
 kubeadm init
