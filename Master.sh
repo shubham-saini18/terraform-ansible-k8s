@@ -77,44 +77,22 @@ sudo apt-mark hold kubelet kubeadm kubectl
 
 sudo apt-get install -y jq
 
-local_ip="$(ip --json addr show eth0 | jq -r '.[0].addr_info[] | select(.family == "inet") | .local')"
-sudo mkdir -p /etc/default  # This creates the directory if it doesn't exist
-sudo tee /etc/default/kubelet << EOF
-KUBELET_EXTRA_ARGS=--node-ip=$local_ip
-EOF
+echo "-------------Pulling Kueadm Images -------------"
+kubeadm config images pull
 
+echo "-------------Running kubeadm init-------------"
+kubeadm init
 
-PUBLIC_IP_ACCESS="true"
-NODENAME=$(hostname -s)
-POD_CIDR="192.168.0.0/16"
+echo "-------------Copying Kubeconfig-------------"
+mkdir -p /root/.kube
+cp -iv /etc/kubernetes/admin.conf /root/.kube/config
+sudo chown $(id -u):$(id -g) /root/.kube/config
 
-# Pull required images
+echo "-------------Exporting Kubeconfig-------------"
+export KUBECONFIG=/etc/kubernetes/admin.conf
 
-sudo kubeadm config images pull
+echo "-------------Deploying Weavenet Pod Networking-------------"
+kubectl apply -f https://github.com/weaveworks/weave/releases/download/v2.8.1/weave-daemonset-k8s.yaml
 
-# Initialize kubeadm based on PUBLIC_IP_ACCESS
-
-if [[ "$PUBLIC_IP_ACCESS" == "false" ]]; then
-    
-    MASTER_PRIVATE_IP=$(ip addr show eth0 | awk '/inet / {print $2}' | cut -d/ -f1)
-    sudo kubeadm init --apiserver-advertise-address="$MASTER_PRIVATE_IP" --apiserver-cert-extra-sans="$MASTER_PRIVATE_IP" --pod-network-cidr="$POD_CIDR" --node-name "$NODENAME" --ignore-preflight-errors Swap
-
-elif [[ "$PUBLIC_IP_ACCESS" == "true" ]]; then
-
-    MASTER_PUBLIC_IP=$(curl ifconfig.me && echo "")
-    sudo kubeadm init --control-plane-endpoint="$MASTER_PUBLIC_IP" --apiserver-cert-extra-sans="$MASTER_PUBLIC_IP" --pod-network-cidr="$POD_CIDR" --node-name "$NODENAME" --ignore-preflight-errors Swap
-
-else
-    echo "Error: MASTER_PUBLIC_IP has an invalid value: $PUBLIC_IP_ACCESS"
-    exit 1
-fi
-
-# Configure kubeconfig
-
-mkdir -p "$HOME"/.kube
-sudo cp -i /etc/kubernetes/admin.conf "$HOME"/.kube/config
-sudo chown "$(id -u)":"$(id -g)" "$HOME"/.kube/config
-
-# Install Claico Network Plugin Network 
-
-kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
+echo "-------------Creating file with join command-------------"
+echo `kubeadm token create --print-join-command` > ./join-command.sh
