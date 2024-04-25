@@ -35,7 +35,7 @@ disable_swap() {
 install_packages() {
     info "Installing required packages"
     apt-get update || error_exit "Failed to update package lists"
-    apt-get install -y apt-transport-https curl wget || error_exit "Failed to install packages"
+    sudo apt-get install -y apt-transport-https ca-certificates curl gpg || error_exit "Failed to install packages"
 }
 
 # Install Containerd
@@ -101,8 +101,8 @@ EOF
 # Install kubectl, kubelet and kubeadm
 install_kubernetes() {
     info "Installing Kubernetes components"
-    curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add - || error_exit "Failed to add Kubernetes repository key"
-    echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" > /etc/apt/sources.list.d/kubernetes.list || error_exit "Failed to add Kubernetes repository"
+    curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg || error_exit "Failed to add Kubernetes repository key"
+    echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list || error_exit "Failed to add Kubernetes repository"
     apt-get update || error_exit "Failed to update package lists"
     apt-get install -y kubelet kubeadm kubectl || error_exit "Failed to install Kubernetes components"
     apt-mark hold kubelet kubeadm kubectl || error_exit "Failed to hold Kubernetes packages"
