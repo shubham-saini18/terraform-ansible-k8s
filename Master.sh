@@ -113,7 +113,22 @@ print_kubeadm_version() {
     info "Printing Kubeadm version"
     kubeadm version
 }
+kubeadm_init() {
+kubeadm config images pull
+kubeadm init
+mkdir -p /root/.kube
+cp -iv /etc/kubernetes/admin.conf /root/.kube/config
+sudo chown $(id -u):$(id -g) /root/.kube/config
 
+export KUBECONFIG=/etc/kubernetes/admin.conf
+
+
+kubectl apply -f https://github.com/weaveworks/weave/releases/download/v2.8.1/weave-daemonset-k8s.yaml
+
+
+echo `kubeadm token create --print-join-command` > ./join-command.sh
+ 
+}
 # Main function
 main() {
     set_hostname "$1"
@@ -127,6 +142,7 @@ main() {
     configure_kernel
     install_kubernetes
     print_kubeadm_version
+    kubeadm_init
 }
 
 # Call main function with hostname argument
