@@ -1,4 +1,9 @@
 #!/bin/bash
+if [ "$(id -u)" -ne 0 ]; then
+  echo "Script is not running as root. Attempting to elevate privileges..."
+  exec sudo "$0" "$@"
+  exit $?
+fi
 set -euo pipefail
 
 # Function to display informational messages
