@@ -1,0 +1,27 @@
+# SSH Keys
+k8s
+*.pem
+*.pub
+
+# Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+.tfvars
+terraform.tfvars
+
+# Local files
+join-command.sh
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
